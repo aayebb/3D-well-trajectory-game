@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drilling Simulator 3D - v2.0</title>
+    <!-- Google Fonts for Modern Typography -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- Shared base styles (same look as v1.1) -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- v2.0 specific styles -->
+    <style>
+        .setup-panel {
+            max-width: 780px;
+        }
+
+        .target-row {
+            grid-template-columns: 80px repeat(4, 1fr);
+        }
+
+        .setup-note {
+            font-size: 0.8rem;
+            line-height: 1.55;
+            color: var(--text-muted);
+            background: rgba(56, 189, 248, 0.06);
+            border: 1px solid rgba(56, 189, 248, 0.18);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 20px;
+        }
+
+        .setup-note b {
+            color: var(--text-main);
+        }
+
+        .dashboard-grid {
+            grid-template-columns: 320px 1fr 320px;
+        }
+
+        .stats-panel,
+        .controls-panel {
+            overflow-y: auto;
+        }
+
+        .stat-grid-2 .stat-value {
+            font-size: 1.45rem;
+        }
+
+        .stat-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* ---------- 3D viewport ---------- */
+        .chart-panel {
+            padding: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .viewport {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at 50% 0%, #1e3a5f 0%, #0b1324 55%, #050a14 100%);
+        }
+
+        .viewport canvas {
+            display: block;
+            outline: none;
+        }
+
+        .view-toolbar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        .view-toolbar>* {
+            pointer-events: auto;
+        }
+
+        .view-btn {
+            background: rgba(15, 23, 42, 0.78);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font: 500 0.78rem var(--font-ui);
+            cursor: pointer;
+            backdrop-filter: blur(6px);
+            transition: 0.15s all;
+        }
+
+        .view-btn:hover {
+            border-color: var(--accent-teal);
+        }
+
+        .view-btn.active {
+            background: rgba(45, 212, 191, 0.18);
+            border-color: var(--accent-teal);
+            color: var(--accent-teal);
+        }
+
+        .toolbar-sep {
+            width: 1px;
+            background: rgba(255, 255, 255, 0.15);
+            margin: 2px 4px;
+        }
+
+        .overlay-box {
+            position: absolute;
+            z-index: 5;
+            background: rgba(15, 23, 42, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            backdrop-filter: blur(6px);
+            pointer-events: none;
+        }
+
+        .legend {
+            left: 12px;
+            bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .swatch {
+            width: 20px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .swatch.dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin: 0 5px;
+        }
+
+        .swatch.dashed {
+            background: repeating-linear-gradient(90deg, #94a3b8 0 5px, transparent 5px 9px) !important;
+        }
+
+        .mouse-hint {
+            right: 12px;
+            bottom: 12px;
+            text-align: right;
+            line-height: 1.5;
+        }
+
+        /* Labels rendered in 3D space */
+        .lbl3d {
+            font-family: var(--font-ui);
+            font-size: 11px;
+            color: #e2e8f0;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 2px 7px;
+            border-radius: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .lbl3d.target {
+            border-color: rgba(248, 113, 113, 0.7);
+            color: #fecaca;
+            font-weight: 600;
+        }
+
+        .lbl3d.hit {
+            border-color: rgba(74, 222, 128, 0.8);
+            color: #bbf7d0;
+        }
+
+        .lbl3d.miss {
+            border-color: rgba(248, 113, 113, 0.9);
+            color: #fca5a5;
+        }
+
+        .lbl3d.axis {
+            background: transparent;
+            border: none;
+            color: #64748b;
+            font-size: 10px;
+            padding: 0;
+        }
+
+        .lbl3d.compass {
+            background: transparent;
+            border: none;
+            color: var(--accent-teal);
+            font: 700 15px var(--font-numbers);
+        }
+
+        .lbl3d.ac {
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+            font-weight: 600;
+        }
+
+        .lbl3d.muted {
+            color: var(--text-muted);
+        }
+
+        /* ---------- Steering pad ---------- */
+        .steer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .steer-pad .action-btn {
+            height: 66px;
+            margin: 0;
+            padding: 6px;
+            flex-direction: column;
+            gap: 2px;
+            font-size: 0.85rem;
+            color: white;
+        }
+
+        .steer-pad .icon {
+            font-size: 1.3rem;
+            line-height: 1;
+        }
+
+        .steer-pad small {
+            font-size: 0.65rem;
+            opacity: 0.75;
+            font-weight: 500;
+        }
+
+        .s-btn.turn {
+            background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+        }
+
+        .s-btn.turn:hover:not(:disabled) {
+            box-shadow: 0 0 15px rgba(124, 58, 237, 0.5);
+        }
+
+        .s-btn.custom {
+            background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+            height: 48px;
+            margin: 0;
+            font-size: 0.9rem;
+        }
+
+        .key-hint {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+
+        .tf-box {
+            margin-top: 18px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .tf-box h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .tf-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 10px;
+        }
+
+        .tf-dial {
+            width: 86px;
+            height: 86px;
+            flex-shrink: 0;
+        }
+
+        .tf-dial .ring {
+            fill: rgba(15, 23, 42, 0.7);
+            stroke: rgba(255, 255, 255, 0.15);
+            stroke-width: 2;
+        }
+
+        .tf-dial text {
+            fill: var(--text-muted);
+            font: 600 9px var(--font-ui);
+            text-anchor: middle;
+        }
+
+        .tf-dial .needle {
+            stroke: var(--accent-teal);
+            stroke-width: 3;
+            stroke-linecap: round;
+        }
+
+        .tf-dial .hub {
+            fill: var(--accent-teal);
+        }
+
+        .tf-controls {
+            flex: 1;
+        }
+
+        .tf-value {
+            font: 700 1.6rem var(--font-numbers);
+            color: var(--accent-teal);
+        }
+
+        .tf-controls input[type=range] {
+            padding: 0;
+            accent-color: var(--accent-teal);
+            background: transparent;
+            border: none;
+            box-shadow: none;
+        }
+
+        .tf-note {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            line-height: 1.45;
+        }
+
+        .next-target .nt-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 10px;
+            margin-top: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .next-target .nt-grid b {
+            display: block;
+            font: 700 1.15rem var(--font-numbers);
+            color: var(--text-main);
+        }
+
+        .nt-title {
+            font-weight: 600;
+            color: var(--accent-red);
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+
+            .chart-panel {
+                height: 65vh;
+            }
+        }
+    </style>
+
+    <!-- Three.js (3D engine) via import map -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <span class="pulse"></span>
+                <h1>WELL TRAJECTORY <span class="subtitle">3D Drilling Simulator · v2.0</span></h1>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- Setup Panel (Visible initially) -->
+            <section id="setup-panel" class="panel setup-panel active">
+                <h2>Configuration</h2>
+                <form id="setup-form">
+
+                    <div class="form-group">
+                        <label for="standLength">Stand Length (90 - 100 ft)</label>
+                        <input type="number" id="standLength" value="90" min="90" max="100" required>
+                    </div>
+
+                    <div class="form-group targets-group">
+                        <h3>Targets</h3>
+                        <div class="target-inputs">
+                            <div class="target-row header-row"
+                                style="margin-bottom: 5px; color: var(--text-muted); font-size: 0.85rem; padding-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <div></div>
+                                <div>TVDss (ft)</div>
+                                <div>HD (ft)</div>
+                                <div>Azimuth (°)</div>
+                                <div>Tolerance (ft)</div>
+                            </div>
+                            <div class="target-row">
+                                <label>Target 1</label>
+                                <input type="number" id="t1-tvd" placeholder="TVD" value="8250" required>
+                                <input type="number" id="t1-hd" placeholder="HD" value="2800" required>
+                                <input type="number" id="t1-az" placeholder="Azimuth" value="45" min="0" max="360" step="any" required>
+                                <input type="number" id="t1-tol" placeholder="Tolerance" value="150" required>
+                            </div>
+                            <div class="target-row">
+                                <label>Target 2</label>
+                                <input type="number" id="t2-tvd" placeholder="TVD" value="10000" required>
+                                <input type="number" id="t2-hd" placeholder="HD" value="3500" required>
+                                <input type="number" id="t2-az" placeholder="Azimuth" value="45" min="0" max="360" step="any" required>
+                                <input type="number" id="t2-tol" placeholder="Tolerance" value="150" required>
+                            </div>
+                            <div class="target-row">
+                                <label>Target 3</label>
+                                <input type="number" id="t3-tvd" placeholder="TVD" value="13000" required>
+                                <input type="number" id="t3-hd" placeholder="HD" value="4850" required>
+                                <input type="number" id="t3-az" placeholder="Azimuth" value="45" min="0" max="360" step="any" required>
+                                <input type="number" id="t3-tol" placeholder="Tolerance" value="150" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setup-note">
+                        <b>3D mode:</b> each target is located by its horizontal departure (HD) along an
+                        <b>azimuth</b> (0° = North, 90° = East) and is drawn as a horizontal disc whose radius equals the
+                        tolerance. At spud, the reference azimuth is aligned with Target 1 so <b>Build</b> kicks off
+                        toward Target 1, while <b>Left / Right / Custom Toolface</b> steer in full 3D.<br>
+                        <b>Offset well:</b> surface slot 150 ft NE (Az 045°), kicks off at 2,500 ft and builds
+                        2.0°/90 ft to 45°.
+                    </div>
+
+                    <div class="form-group">
+                        <label for="motorSelect">Select Motor</label>
+                        <select id="motorSelect" required>
+                            <option value="1">1. 0.75 deg (Unlimited slides)</option>
+                            <option value="2">2. 1.5 deg (Max 6 consec slides, Penalty $50k)</option>
+                            <option value="3">3. 2.0 deg (Max 4 consec slides, Penalty $100k)</option>
+                            <option value="4">4. 3.0 deg (Max 3 consec slides, Penalty $200k)</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary start-btn">START SIMULATION</button>
+
+                </form>
+            </section>
+
+            <!-- Game Dashboard (Hidden initially) -->
+            <section id="game-dashboard" class="panel game-dashboard">
+
+                <div class="dashboard-grid">
+
+                    <!-- Stats Column -->
+                    <div class="stats-panel">
+                        <h2>Live Telemetry</h2>
+
+                        <div class="stat-card">
+                            <span class="stat-label">Measured Depth (MD)</span>
+                            <span class="stat-value" id="val-md">0 ft</span>
+                            <span class="kop-hint" id="kop-hint">To KOP: 2000ft</span>
+                        </div>
+
+                        <div class="stat-grid-2">
+                            <div class="stat-card">
+                                <span class="stat-label">TVDss</span>
+                                <span class="stat-value text-blue" id="val-tvd">-85 ft</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Closure HD</span>
+                                <span class="stat-value text-blue" id="val-hd">0 ft</span>
+                                <span class="stat-sub" id="val-cazi">Az —</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Northing</span>
+                                <span class="stat-value" id="val-north">0 ft</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Easting</span>
+                                <span class="stat-value" id="val-east">0 ft</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Inclination</span>
+                                <span class="stat-value text-purple" id="val-inc">0.0°</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Azimuth</span>
+                                <span class="stat-value text-purple" id="val-azi">—</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Last DLS</span>
+                                <span class="stat-value" id="val-dls">0.00</span>
+                                <span class="stat-sub">°/100 ft</span>
+                            </div>
+                            <div class="stat-card">
+                                <span class="stat-label">Consec Slides</span>
+                                <span class="stat-value" id="val-slides">0</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-card highlight">
+                            <span class="stat-label">Total Cost</span>
+                            <span class="stat-value text-green" id="val-cost">$0</span>
+                        </div>
+
+                        <div class="stat-card alert-box" id="ac-box">
+                            <span class="stat-label">Anti-Collision Dist (3D)</span>
+                            <span class="stat-value text-amber" id="val-ac">&gt;1000 ft</span>
+                        </div>
+
+                        <div class="stat-card next-target">
+                            <span class="stat-label">Next Target</span>
+                            <span class="nt-title" id="nt-name">—</span>
+                            <div class="nt-grid">
+                                <div>TVD to go<b id="nt-dtvd">—</b></div>
+                                <div>Horiz. offset<b id="nt-dist">—</b></div>
+                                <div>Bearing to target<b id="nt-bearing">—</b></div>
+                                <div>Proj. miss (straight)<b id="nt-proj">—</b></div>
+                            </div>
+                        </div>
+
+                        <!-- Target Status -->
+                        <div class="targets-status">
+                            <h3>Targets Status</h3>
+                            <ul id="target-list">
+                                <!-- Populated dynamically -->
+                            </ul>
+                        </div>
+
+                    </div>
+
+                    <!-- 3D View Column -->
+                    <div class="chart-panel">
+                        <div id="viewport" class="viewport"></div>
+
+                        <div class="view-toolbar">
+                            <button class="view-btn" data-view="iso">3D</button>
+                            <button class="view-btn" data-view="plan">Plan (Top)</button>
+                            <button class="view-btn" data-view="vs">Section · Target Az</button>
+                            <button class="view-btn" data-view="ns">Section · N–S</button>
+                            <button class="view-btn" data-view="ew">Section · E–W</button>
+                            <span class="toolbar-sep"></span>
+                            <button class="view-btn" data-orbit="left" title="Rotate View Left">⟲ Rotate L</button>
+                            <button class="view-btn" data-orbit="right" title="Rotate View Right">⟳ Rotate R</button>
+                            <button class="view-btn" data-orbit="up" title="Tilt View Up">↑ Tilt Up</button>
+                            <button class="view-btn" data-orbit="down" title="Tilt View Down">↓ Tilt Down</button>
+                            <span class="toolbar-sep"></span>
+                            <button class="view-btn" id="btn-follow">Follow Bit</button>
+                            <button class="view-btn" id="btn-autorotate">Auto-Rotate</button>
+                        </div>
+
+                        <div class="overlay-box legend">
+                            <div class="legend-item"><span class="swatch" style="background:#38bdf8"></span>Active well</div>
+                            <div class="legend-item"><span class="swatch dot" style="background:#2dd4bf"></span>Bit / hole direction</div>
+                            <div class="legend-item"><span class="swatch dashed"></span>Offset well</div>
+                            <div class="legend-item"><span class="swatch" style="background:#f87171"></span>Target (radius = tolerance)</div>
+                            <div class="legend-item"><span class="swatch" style="background:#38bdf8;opacity:.4"></span>Plan projection at MSL</div>
+                        </div>
+
+                        <div class="overlay-box mouse-hint">
+                            Left-drag: rotate<br>
+                            Right-drag: pan<br>
+                            Scroll: zoom
+                        </div>
+                    </div>
+
+                    <!-- Controls and Logs Column -->
+                    <div class="controls-panel">
+
+                        <div class="control-actions">
+                            <h2>Steering</h2>
+                            <div class="steer-pad">
+                                <div></div>
+                                <button id="btn-build" class="btn action-btn s-btn steer" data-cmd="b">
+                                    <span class="icon">↑</span>Build<small>TF 0° (HS)</small>
+                                </button>
+                                <div></div>
+
+                                <button id="btn-left" class="btn action-btn s-btn turn steer" data-cmd="l">
+                                    <span class="icon">←</span>Left<small>TF 270°</small>
+                                </button>
+                                <button id="btn-rotate" class="btn action-btn r-btn steer" data-cmd="r">
+                                    <span class="icon">↻</span>Rotate<small>Hold</small>
+                                </button>
+                                <button id="btn-right" class="btn action-btn s-btn turn steer" data-cmd="t">
+                                    <span class="icon">→</span>Right<small>TF 90°</small>
+                                </button>
+
+                                <div></div>
+                                <button id="btn-drop" class="btn action-btn s-btn drop steer" data-cmd="d">
+                                    <span class="icon">↓</span>Drop<small>TF 180° (LS)</small>
+                                </button>
+                                <div></div>
+                            </div>
+
+                            <div class="tf-box">
+                                <h3>Custom Toolface Slide</h3>
+                                <div class="tf-row">
+                                    <svg class="tf-dial" viewBox="-50 -50 100 100">
+                                        <circle class="ring" r="45"></circle>
+                                        <text y="-31">HS</text>
+                                        <text x="34" y="3">R</text>
+                                        <text y="38">LS</text>
+                                        <text x="-34" y="3">L</text>
+                                        <line id="tf-needle" class="needle" x1="0" y1="0" x2="0" y2="-26"></line>
+                                        <circle class="hub" r="4"></circle>
+                                    </svg>
+                                    <div class="tf-controls">
+                                        <span class="tf-value" id="tf-value">45°</span>
+                                        <input type="range" id="tf-input" min="0" max="355" step="5" value="45">
+                                    </div>
+                                </div>
+                                <button id="btn-custom" class="btn action-btn s-btn custom steer" data-cmd="c">
+                                    Slide @ Toolface
+                                </button>
+                                <div class="tf-note">Toolface is measured clockwise from the high side.
+                                    While the hole is vertical, it is referenced to the last hole azimuth
+                                    (North at spud).</div>
+                            </div>
+
+                            <div class="key-hint">Keys: ↑ Build · ↓ Drop · ← Left · → Right · R Rotate · C Slide @ TF</div>
+
+                            <button id="btn-restart" class="btn btn-danger hidden"
+                                style="margin-top:20px; width:100%;">START NEW WELL</button>
+                        </div>
+
+                        <div class="logs-container">
+                            <h2>System Logs</h2>
+                            <div id="log-box" class="log-box">
+                                <div class="log-entry system">System Initialized. Engine ready.</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </section>
+
+        </main>
+
+        <!-- Footer -->
+        <footer style="text-align: center; padding: 20px; font-size: 0.85rem; opacity: 0.7; margin-top: auto;">
+            &copy; 2026 Ts. Dr. Mohamad Arif Ibrahim, Department of Petroleum Engineering, Faculty of Chemical and Energy Engineering, Universiti Teknologi Malaysia.
+        </footer>
+    </div>
+
+    <!-- Main Logic -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+        import { Line2 } from 'three/addons/lines/Line2.js';
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+        import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+        // ===== PHYSICS START =====
+        // Constants (same as v1.1)
+        const RIG_RATE_HR = 5000;
+        const ROTATE_COST_HR = 150;
+        const SLIDE_COST_HR = 30;
+        const ROP_ROTATE = 90.0;
+        const ROP_SLIDE = 45.0;
+        const KOP = 2000;
+        const RKB = -85.0; // rig floor elevation in TVDss (ft)
+
+        // Anti-collision thresholds (ft)
+        const AC_CRASH = 15;
+        const AC_WARN = 50;
+        const AC_WINDOW = 600; // only compare offset stations within this TVD window
+
+        // Offset well definition (3D)
+        const OFFSET_WELL = {
+            n: 150 * Math.cos(Math.PI / 4), // surface slot 150 ft NE of the active slot
+            e: 150 * Math.sin(Math.PI / 4),
+            kop: 2500,
+            azi: 45,
+            buildPerFt: 2.0 / 90.0,
+            maxInc: 45
+        };
+
+        const D2R = Math.PI / 180.0;
+        const R2D = 180.0 / Math.PI;
+        const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+        const normAz = a => ((a % 360) + 360) % 360;
+
+        /**
+         * New inclination / azimuth after sliding a motor with a given dogleg at a given toolface.
+         * Toolface (TF) is measured clockwise from the high side: 0 = build, 90 = right,
+         * 180 = drop, 270 = left. Works on the hole-direction unit vector (N, E, Down).
+         */
+        function steer(incDeg, aziDeg, tfDeg, doglegDeg) {
+            if (doglegDeg === 0) return { inc: incDeg, azi: aziDeg };
+
+            // Same as v1.1: a pure drop cannot push the hole past vertical
+            if (Math.abs(normAz(tfDeg) - 180) < 1e-9 && doglegDeg >= incDeg) {
+                return { inc: 0, azi: aziDeg };
+            }
+
+            const I = incDeg * D2R, A = aziDeg * D2R, T = tfDeg * D2R, B = doglegDeg * D2R;
+            const t = [Math.sin(I) * Math.cos(A), Math.sin(I) * Math.sin(A), Math.cos(I)];   // tangent
+            const h = [Math.cos(I) * Math.cos(A), Math.cos(I) * Math.sin(A), -Math.sin(I)];  // high side
+            const r = [-Math.sin(A), Math.cos(A), 0];                                        // right side
+            const d = [0, 1, 2].map(k => h[k] * Math.cos(T) + r[k] * Math.sin(T));           // bend direction
+            const t2 = [0, 1, 2].map(k => t[k] * Math.cos(B) + d[k] * Math.sin(B));
+            const len = Math.hypot(t2[0], t2[1], t2[2]);
+            const [n, e, v] = t2.map(x => x / len);
+
+            const inc = Math.acos(clamp(v, -1, 1)) * R2D;
+            const azi = Math.hypot(n, e) < 1e-12 ? aziDeg : normAz(Math.atan2(e, n) * R2D);
+            return { inc, azi };
+        }
+
+        /**
+         * Minimum Curvature Method (3D) between two survey stations.
+         * Returns the North, East and TVD increments plus the dogleg (deg).
+         */
+        function minimumCurvature(dMd, inc1, azi1, inc2, azi2) {
+            const I1 = inc1 * D2R, I2 = inc2 * D2R;
+            const A1 = azi1 * D2R, A2 = azi2 * D2R;
+
+            const cosDL = Math.cos(I2 - I1) - Math.sin(I1) * Math.sin(I2) * (1 - Math.cos(A2 - A1));
+            const DL = Math.acos(clamp(cosDL, -1, 1));
+            const RF = DL > 1e-7 ? (2.0 / DL) * Math.tan(DL / 2.0) : 1.0;
+
+            const dN = (dMd / 2.0) * (Math.sin(I1) * Math.cos(A1) + Math.sin(I2) * Math.cos(A2)) * RF;
+            const dE = (dMd / 2.0) * (Math.sin(I1) * Math.sin(A1) + Math.sin(I2) * Math.sin(A2)) * RF;
+            const dV = (dMd / 2.0) * (Math.cos(I1) + Math.cos(I2)) * RF;
+
+            return { dN, dE, dV, dl: DL * R2D };
+        }
+
+        // Generate Offset Well (vertical to its KOP, then build-and-hold along a fixed azimuth)
+        function generateOffsetWell(maxTvd) {
+            const W = OFFSET_WELL;
+            let n = W.n, e = W.e, tvd = RKB, inc = 0;
+            const pts = [{ n, e, tvd }];
+
+            while (tvd < W.kop) {
+                tvd += 20;
+                pts.push({ n, e, tvd });
+            }
+
+            const az = W.azi * D2R;
+            while (tvd < maxTvd) {
+                const dMd = 10;
+                inc = Math.min(inc + W.buildPerFt * dMd, W.maxInc);
+                const rad = inc * D2R;
+                tvd += dMd * Math.cos(rad);
+                const dh = dMd * Math.sin(rad);
+                n += dh * Math.cos(az);
+                e += dh * Math.sin(az);
+                pts.push({ n, e, tvd });
+            }
+            return pts;
+        }
+        // ===== PHYSICS END =====
+
+        // DOM Elements
+        const setupPanel = document.getElementById('setup-panel');
+        const gameDashboard = document.getElementById('game-dashboard');
+        const setupForm = document.getElementById('setup-form');
+        const $ = id => document.getElementById(id);
+
+        const COLORS = {
+            well: 0x38bdf8,
+            bit: 0x2dd4bf,
+            offset: 0x94a3b8,
+            pending: 0xf87171,
+            hit: 0x4ade80,
+            miss: 0x64748b,
+            ac: 0xf87171
+        };
+
+        // Game State
+        const game = {
+            md: 0, n: 0, e: 0, tvd: RKB, inc: 0, azi: 0, cost: 0,
+            path: [],
+            stand_length: 90,
+            targets: [],
+            motor_yield: 0,
+            max_consec_slides: Infinity,
+            penalty_amount: 0,
+            current_consec_slides: 0,
+            target_status: [],
+            game_over: false,
+            offset: [],
+            lastDLS: 0,
+            endDepth: 0
+        };
+
+        // ---------- Helpers ----------
+        const fmt = v => Math.round(v).toLocaleString();
+        const fmtNS = v => v >= 0 ? `${fmt(v)} N` : `${fmt(-v)} S`;
+        const fmtEW = v => v >= 0 ? `${fmt(v)} E` : `${fmt(-v)} W`;
+        const pad3 = a => String(Math.round(normAz(a)) % 360).padStart(3, '0');
+        const getTF = () => parseInt($('tf-input').value, 10);
+
+        // Well coordinates (N, E, TVD) -> scene coordinates (x = East, y = Up, z = South)
+        const toScene = (n, e, tvd) => new THREE.Vector3(e, -tvd, -n);
+
+        // Check Collision (3D distance to nearest offset-well station)
+        function checkCollision() {
+            let best = { dist: Infinity, pt: null };
+            for (const p of game.offset) {
+                if (Math.abs(p.tvd - game.tvd) < AC_WINDOW) {
+                    const d = Math.hypot(p.n - game.n, p.e - game.e, p.tvd - game.tvd);
+                    if (d < best.dist) best = { dist: d, pt: p };
+                }
+            }
+            return best;
+        }
+
+        // Start Game from Setup Form
+        setupForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            game.stand_length = parseFloat($('standLength').value);
+
+            game.targets = [1, 2, 3].map(k => {
+                const tvd = parseFloat($(`t${k}-tvd`).value);
+                const hd = parseFloat($(`t${k}-hd`).value);
+                const az = parseFloat($(`t${k}-az`).value);
+                const tol = parseFloat($(`t${k}-tol`).value);
+                return { tvd, hd, az, tol, n: hd * Math.cos(az * D2R), e: hd * Math.sin(az * D2R) };
+            });
+            game.target_status = ["Pending", "Pending", "Pending"];
+
+            const motorChoice = $('motorSelect').value;
+            if (motorChoice === '1') { game.motor_yield = 0.75; game.max_consec_slides = Infinity; game.penalty_amount = 0; }
+            else if (motorChoice === '2') { game.motor_yield = 1.5; game.max_consec_slides = 6; game.penalty_amount = 50000; }
+            else if (motorChoice === '3') { game.motor_yield = 2.0; game.max_consec_slides = 4; game.penalty_amount = 100000; }
+            else if (motorChoice === '4') { game.motor_yield = 3.0; game.max_consec_slides = 3; game.penalty_amount = 200000; }
+
+            // Init state (reference azimuth aligned with Target 1 at spud)
+            Object.assign(game, {
+                md: 0, n: 0, e: 0, tvd: RKB, inc: 0, azi: normAz(game.targets[0].az), cost: 0,
+                current_consec_slides: 0, game_over: false, lastDLS: 0
+            });
+            game.path = [{ md: 0, n: 0, e: 0, tvd: RKB }];
+            game.endDepth = Math.max(...game.targets.map(t => t.tvd)) + 1000;
+            game.offset = generateOffsetWell(Math.max(12000, game.endDepth + 500));
+
+            // Switch View
+            setupPanel.classList.remove('active');
+            gameDashboard.classList.add('active');
+
+            initThree();
+            resizeViewport();
+            buildScene();
+            setView('iso', true);
+
+            const ac = checkCollision();
+            updateUI(ac);
+            updateWellScene(ac);
+            log("Simulation Started (3D).", "success");
+            log(`Equipment: Motor ${game.motor_yield}°, Stand ${game.stand_length}ft`, "info");
+        });
+
+        // Stepping Logic
+        const SLIDES = {
+            b: { tf: 0, name: 'Slide Build', desc: 'TF 0° HS' },
+            d: { tf: 180, name: 'Slide Drop', desc: 'TF 180° LS' },
+            l: { tf: 270, name: 'Slide Left', desc: 'TF 270°' },
+            t: { tf: 90, name: 'Slide Right', desc: 'TF 90°' }
+        };
+
+        function step(cmd) {
+            if (game.game_over) return;
+
+            const isSlide = cmd !== 'r';
+            let tf = 0, time_elapsed, var_cost;
+
+            if (isSlide) {
+                const s = cmd === 'c' ? { tf: getTF(), name: 'Slide', desc: `TF ${getTF()}°` } : SLIDES[cmd];
+                tf = s.tf;
+                time_elapsed = game.stand_length / ROP_SLIDE;
+                var_cost = SLIDE_COST_HR * time_elapsed;
+                game.current_consec_slides++;
+                log(`${s.name} (${s.desc}), dogleg ${game.motor_yield}°...`, "info");
+            } else {
+                time_elapsed = game.stand_length / ROP_ROTATE;
+                var_cost = ROTATE_COST_HR * time_elapsed;
+                game.current_consec_slides = 0;
+                log(`Rotating ahead...`, "info");
+            }
+
+            // Penalties
+            let penalty_cost = 0;
+            if (isSlide && game.current_consec_slides > game.max_consec_slides) {
+                penalty_cost = game.penalty_amount;
+                log(`⚠️ PENALTY: $${penalty_cost.toLocaleString()} (Exceeded Max Slides: ${game.current_consec_slides})`, "error");
+            }
+
+            const rig_cost = RIG_RATE_HR * time_elapsed;
+            game.cost += (rig_cost + var_cost + penalty_cost);
+
+            // Physics - 3D Minimum Curvature
+            const i1 = game.inc, a1 = game.azi;
+            const next = isSlide ? steer(i1, a1, tf, game.motor_yield) : { inc: i1, azi: a1 };
+            const mc = minimumCurvature(game.stand_length, i1, a1, next.inc, next.azi);
+
+            game.inc = next.inc;
+            game.azi = next.azi;
+            game.md += game.stand_length;
+            game.n += mc.dN;
+            game.e += mc.dE;
+            game.tvd += mc.dV;
+            game.lastDLS = mc.dl * 100 / game.stand_length;
+            game.path.push({ md: game.md, n: game.n, e: game.e, tvd: game.tvd });
+
+            checkTargets();
+
+            const ac = checkCollision();
+            if (ac.dist < AC_CRASH) {
+                log(`💥 CRASH! Intersection with Offset Well. Dist=${ac.dist.toFixed(1)}ft.`, "error");
+                endGame();
+            } else if (ac.dist < AC_WARN) {
+                log(`⚠️ ANTI-COLLISION WARNING: ${ac.dist.toFixed(0)} ft`, "warning");
+            }
+
+            if (game.tvd >= game.endDepth && !game.game_over) {
+                log(`🏁 Reached Total Depth (TD). Drilling Finished. Final Cost: $${Math.floor(game.cost).toLocaleString()}`, "success");
+                endGame();
+            }
+
+            updateUI(ac);
+            updateWellScene(ac);
+        }
+
+        // Check Targets (horizontal miss distance where the well crosses the target TVD)
+        function checkTargets() {
+            const cur = game.path[game.path.length - 1];
+            const prev = game.path[game.path.length - 2];
+
+            game.targets.forEach((t, i) => {
+                if (game.target_status[i] !== "Pending" || cur.tvd < t.tvd) return;
+
+                const frac = cur.tvd !== prev.tvd ? (t.tvd - prev.tvd) / (cur.tvd - prev.tvd) : 1;
+                const pn = prev.n + frac * (cur.n - prev.n);
+                const pe = prev.e + frac * (cur.e - prev.e);
+                const dist = Math.hypot(pn - t.n, pe - t.e);
+                const hit = dist <= t.tol;
+
+                if (hit) {
+                    game.target_status[i] = `HIT (Off by ${dist.toFixed(1)}ft)`;
+                    log(`🎯 Target ${i + 1} HIT! (Missed center by ${dist.toFixed(1)}ft)`, "success");
+                } else {
+                    game.target_status[i] = `MISS (Off by ${dist.toFixed(1)}ft)`;
+                    log(`❌ Target ${i + 1} MISSED! (Off by ${dist.toFixed(1)}ft)`, "error");
+                }
+                markTarget(i, hit, { n: pn, e: pe, tvd: t.tvd }, dist);
+            });
+        }
+
+        // UI Updating
+        function updateUI(ac) {
+            $('val-md').textContent = `${fmt(game.md)} ft`;
+            $('val-tvd').textContent = `${fmt(game.tvd)} ft`;
+            const closure = Math.hypot(game.n, game.e);
+            $('val-hd').textContent = `${fmt(closure)} ft`;
+            $('val-cazi').textContent = closure > 0.5 ? `Az ${pad3(Math.atan2(game.e, game.n) * R2D)}°` : 'Az —';
+            $('val-north').textContent = fmtNS(game.n);
+            $('val-east').textContent = fmtEW(game.e);
+            $('val-inc').textContent = `${game.inc.toFixed(1)}°`;
+            $('val-azi').textContent = `${game.azi.toFixed(1)}°`;
+            $('val-dls').textContent = game.lastDLS.toFixed(2);
+            $('val-slides').textContent = game.current_consec_slides;
+            $('val-cost').textContent = `$${Math.floor(game.cost).toLocaleString()}`;
+
+            const kopHint = $('kop-hint');
+            if (game.md < KOP) {
+                kopHint.textContent = `To KOP: ${Math.floor(KOP - game.md)}ft`;
+                kopHint.style.display = 'block';
+            } else {
+                kopHint.style.display = 'none';
+            }
+
+            const acBox = $('ac-box');
+            const valAc = $('val-ac');
+            if (ac.dist > 1000) {
+                valAc.textContent = ">1000 ft";
+                valAc.className = "stat-value text-amber";
+                acBox.classList.remove('danger');
+            } else {
+                valAc.textContent = `${Math.floor(ac.dist)} ft`;
+                if (ac.dist < AC_WARN) {
+                    acBox.classList.add('danger');
+                    valAc.className = "stat-value text-red";
+                } else {
+                    acBox.classList.remove('danger');
+                    valAc.className = "stat-value text-amber";
+                }
+            }
+
+            updateNextTarget();
+
+            // Target List
+            const tl = $('target-list');
+            tl.innerHTML = '';
+            game.target_status.forEach((status, i) => {
+                const li = document.createElement('li');
+                let cls = "ts-pending";
+                if (status.includes("HIT")) cls = "ts-hit";
+                if (status.includes("MISS")) cls = "ts-miss";
+                li.className = cls;
+                li.innerHTML = `<span>Target ${i + 1}</span> <span>${status}</span>`;
+                tl.appendChild(li);
+            });
+        }
+
+        function updateNextTarget() {
+            const idx = game.target_status.findIndex(s => s === "Pending");
+            const ids = ['nt-dtvd', 'nt-dist', 'nt-bearing', 'nt-proj'];
+            if (idx < 0) {
+                $('nt-name').textContent = 'All targets evaluated';
+                ids.forEach(id => { $(id).textContent = '—'; $(id).className = ''; });
+                return;
+            }
+            const t = game.targets[idx];
+            const dTvd = t.tvd - game.tvd;
+            const dn = t.n - game.n, de = t.e - game.e;
+            $('nt-name').textContent = `Target ${idx + 1} · ${fmt(t.tvd)} ft TVDss · ±${t.tol} ft`;
+            $('nt-dtvd').textContent = `${fmt(dTvd)} ft`;
+            $('nt-dist').textContent = `${fmt(Math.hypot(dn, de))} ft`;
+            $('nt-bearing').textContent = `${pad3(Math.atan2(de, dn) * R2D)}°`;
+
+            // Straight-ahead projection of the current hole direction down to the target TVD
+            const I = game.inc * D2R, A = game.azi * D2R;
+            const proj = $('nt-proj');
+            if (dTvd > 0 && Math.cos(I) > 0.02) {
+                const s = dTvd / Math.cos(I);
+                const pn = game.n + s * Math.sin(I) * Math.cos(A);
+                const pe = game.e + s * Math.sin(I) * Math.sin(A);
+                const miss = Math.hypot(pn - t.n, pe - t.e);
+                proj.textContent = `${fmt(miss)} ft`;
+                proj.className = miss <= t.tol ? 'text-green' : 'text-red';
+            } else {
+                proj.textContent = '—';
+                proj.className = '';
+            }
+        }
+
+        function log(msg, type = "info") {
+            const logBox = $('log-box');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = msg;
+            logBox.appendChild(entry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function endGame() {
+            game.game_over = true;
+            document.querySelectorAll('.steer').forEach(b => b.disabled = true);
+            $('btn-restart').classList.remove('hidden');
+        }
+
+        // Restart
+        $('btn-restart').addEventListener('click', () => {
+            gameDashboard.classList.remove('active');
+            setupPanel.classList.add('active');
+            document.querySelectorAll('.steer').forEach(b => b.disabled = false);
+            $('btn-restart').classList.add('hidden');
+            $('log-box').innerHTML = '<div class="log-entry system">System Initialized. Engine ready.</div>';
+        });
+
+        // Button Bindings
+        document.querySelectorAll('.steer').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.currentTarget.blur();
+                step(btn.dataset.cmd);
+            });
+        });
+
+        // Toolface dial
+        function updateTFDial() {
+            const tf = getTF();
+            $('tf-value').textContent = `${tf}°`;
+            $('tf-needle').setAttribute('transform', `rotate(${tf})`);
+        }
+        $('tf-input').addEventListener('input', updateTFDial);
+        updateTFDial();
+
+        // Keyboard shortcuts
+        const KEYMAP = { ArrowUp: 'b', ArrowDown: 'd', ArrowLeft: 'l', ArrowRight: 't', r: 'r', R: 'r', c: 'c', C: 'c' };
+        document.addEventListener('keydown', (e) => {
+            if (!gameDashboard.classList.contains('active')) return;
+            const tag = (e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const cmd = KEYMAP[e.key];
+            if (!cmd) return;
+            e.preventDefault();
+            step(cmd);
+        });
+
+        // =====================================================================
+        // 3D VIEW (Three.js)
+        // =====================================================================
+        const V = {
+            renderer: null, labels: null, scene: null, camera: null, controls: null,
+            container: null, world: null, lineMats: [],
+            activeLine: null, shadowLine: null, acLine: null, acLabel: null,
+            bit: null, arrow: null, targetObjs: [], bounds: null, anim: null, follow: false
+        };
+
+        function initThree() {
+            if (V.renderer) return;
+            V.container = $('viewport');
+
+            V.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            V.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            V.container.appendChild(V.renderer.domElement);
+
+            V.labels = new CSS2DRenderer();
+            Object.assign(V.labels.domElement.style, { position: 'absolute', top: '0', left: '0', pointerEvents: 'none' });
+            V.container.appendChild(V.labels.domElement);
+
+            V.scene = new THREE.Scene();
+            V.camera = new THREE.PerspectiveCamera(45, 1, 5, 1e6);
+
+            V.controls = new OrbitControls(V.camera, V.renderer.domElement);
+            V.controls.enableDamping = true;
+            V.controls.dampingFactor = 0.08;
+            V.controls.screenSpacePanning = true;
+            V.controls.autoRotateSpeed = 0.6;
+            V.controls.addEventListener('start', () => { V.anim = null; });
+
+            V.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.3);
+            sun.position.set(1, 2, 1.5);
+            V.scene.add(sun);
+
+            V.world = new THREE.Group();
+            V.scene.add(V.world);
+
+            // Bit + hole-direction arrow (persistent objects)
+            V.bit = new THREE.Mesh(
+                new THREE.SphereGeometry(1, 24, 16),
+                new THREE.MeshStandardMaterial({ color: COLORS.bit, emissive: COLORS.bit, emissiveIntensity: 0.6 })
+            );
+            V.scene.add(V.bit);
+            V.arrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(), 1, COLORS.bit);
+            V.scene.add(V.arrow);
+
+            new ResizeObserver(resizeViewport).observe(V.container);
+            V.renderer.setAnimationLoop(renderFrame);
+        }
+
+        function resizeViewport() {
+            if (!V.renderer) return;
+            const w = V.container.clientWidth, h = V.container.clientHeight;
+            if (!w || !h) return;
+            V.renderer.setSize(w, h);
+            V.labels.setSize(w, h);
+            V.camera.aspect = w / h;
+            V.camera.updateProjectionMatrix();
+            V.lineMats.forEach(m => m.resolution.set(w, h));
+        }
+
+        function renderFrame() {
+            if (!gameDashboard.classList.contains('active')) return;
+
+            if (V.anim) {
+                const k = Math.min(1, (performance.now() - V.anim.start) / V.anim.dur);
+                const ease = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+                V.camera.position.lerpVectors(V.anim.p0, V.anim.p1, ease);
+                V.controls.target.lerpVectors(V.anim.t0, V.anim.t1, ease);
+                if (k >= 1) V.anim = null;
+            }
+            V.controls.update();
+
+            // Keep bit and arrow a constant on-screen size
+            const s = V.camera.position.distanceTo(V.bit.position) * 0.006;
+            V.bit.scale.setScalar(s);
+            V.arrow.position.copy(V.bit.position);
+            V.arrow.setLength(s * 10, s * 3.5, s * 2);
+
+            V.renderer.render(V.scene, V.camera);
+            V.labels.render(V.scene, V.camera);
+        }
+
+        // ---------- Scene object factories ----------
+        function makeLine(points, { color, width = 2, opacity = 1, dashed = false, dashSize = 120, gapSize = 80 }) {
+            const pts = points.length > 1 ? points : [points[0], points[0].clone()];
+            const geo = new LineGeometry();
+            geo.setPositions(pts.flatMap(p => [p.x, p.y, p.z]));
+            const mat = new LineMaterial({
+                color, linewidth: width, transparent: opacity < 1, opacity,
+                dashed, dashSize, gapSize, depthWrite: opacity >= 1
+            });
+            mat.resolution.set(V.container.clientWidth, V.container.clientHeight);
+            V.lineMats.push(mat);
+            const line = new Line2(geo, mat);
+            line.computeLineDistances();
+            return line;
+        }
+
+        function makeLabel(html, cls = '', cx = 0.5, cy = 0.5) {
+            const div = document.createElement('div');
+            div.className = `lbl3d ${cls}`;
+            div.innerHTML = html;
+            const obj = new CSS2DObject(div);
+            obj.center.set(cx, cy);
+            return obj;
+        }
+
+        function makePoint(pos, color, size = 7) {
+            const geo = new THREE.BufferGeometry().setFromPoints([pos]);
+            const mat = new THREE.PointsMaterial({ color, size, sizeAttenuation: false });
+            return new THREE.Points(geo, mat);
+        }
+
+        function circlePoints(n, e, tvd, radius, seg = 72) {
+            const pts = [];
+            for (let k = 0; k <= seg; k++) {
+                const a = (k / seg) * Math.PI * 2;
+                pts.push(toScene(n + radius * Math.cos(a), e + radius * Math.sin(a), tvd));
+            }
+            return pts;
+        }
+
+        function disposeObject(obj) {
+            obj.traverse(o => {
+                if (o.isCSS2DObject && o.element.parentNode) o.element.parentNode.removeChild(o.element);
+                if (o.geometry) o.geometry.dispose();
+                if (o.material) {
+                    (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
+                        V.lineMats = V.lineMats.filter(x => x !== m);
+                        m.dispose();
+                    });
+                }
+            });
+        }
+
+        function replaceInWorld(key, obj) {
+            if (V[key]) {
+                V.world.remove(V[key]);
+                disposeObject(V[key]);
+            }
+            V[key] = obj;
+            if (obj) V.world.add(obj);
+        }
+
+        function clearWorld() {
+            [...V.world.children].forEach(c => { V.world.remove(c); disposeObject(c); });
+            V.lineMats = [];
+            V.targetObjs = [];
+            V.activeLine = V.shadowLine = V.acLine = V.acLabel = null;
+        }
+
+        // ---------- Static scene (grid, targets, offset well) ----------
+        function buildScene() {
+            clearWorld();
+            const tg = game.targets;
+            const endD = game.endDepth;
+
+            // Horizontal extents of everything worth seeing
+            const ns = [0], es = [0];
+            tg.forEach(t => { ns.push(t.n - t.tol, t.n + t.tol); es.push(t.e - t.tol, t.e + t.tol); });
+            game.offset.forEach(p => { if (p.tvd <= endD) { ns.push(p.n); es.push(p.e); } });
+            const minN = Math.min(...ns), maxN = Math.max(...ns), minE = Math.min(...es), maxE = Math.max(...es);
+            const cN = Math.round((minN + maxN) / 2 / 1000) * 1000;
+            const cE = Math.round((minE + maxE) / 2 / 1000) * 1000;
+            const half = Math.ceil((Math.max(maxN - cN, cN - minN, maxE - cE, cE - minE) + 800) / 1000) * 1000;
+            const size = half * 2;
+            V.bounds = { cN, cE, half, endD };
+
+            // Sea level grid + translucent surface
+            const grid = new THREE.GridHelper(size, size / 1000, 0x38bdf8, 0x334155);
+            grid.material.transparent = true;
+            grid.material.opacity = 0.45;
+            grid.position.copy(toScene(cN, cE, 0));
+            V.world.add(grid);
+
+            const sea = new THREE.Mesh(
+                new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2),
+                new THREE.MeshBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.05, side: THREE.DoubleSide, depthWrite: false })
+            );
+            sea.position.copy(toScene(cN, cE, 0));
+            V.world.add(sea);
+
+            // Floor grid at TD for depth reference
+            const floor = new THREE.GridHelper(size, size / 1000, 0x1e293b, 0x1e293b);
+            floor.material.transparent = true;
+            floor.material.opacity = 0.35;
+            floor.position.copy(toScene(cN, cE, endD));
+            V.world.add(floor);
+
+            // Depth ruler at the SW corner
+            const rN = cN - half, rE = cE - half;
+            V.world.add(makeLine([toScene(rN, rE, 0), toScene(rN, rE, endD)], { color: 0x64748b, width: 1.5 }));
+            const depthStep = endD > 12000 ? 2000 : 1000;
+            for (let d = 0; d <= endD; d += depthStep) {
+                V.world.add(makeLine([toScene(rN, rE, d), toScene(rN, rE - half * 0.04, d)], { color: 0x64748b, width: 1.5 }));
+                const lbl = makeLabel(`${fmt(d)} ft`, 'axis', 1.15, 0.5);
+                lbl.position.copy(toScene(rN, rE - half * 0.04, d));
+                V.world.add(lbl);
+            }
+            const mslLbl = makeLabel('MSL (TVDss 0)', 'axis', 1.1, 1.6);
+            mslLbl.position.copy(toScene(rN, rE - half * 0.04, 0));
+            V.world.add(mslLbl);
+
+            // Grid coordinate labels along the south and west edges
+            const gStep = half >= 4000 ? 2000 : 1000;
+            for (let e = cE - half; e <= cE + half; e += gStep) {
+                const l = makeLabel(e >= 0 ? `${fmt(e)}E` : `${fmt(-e)}W`, 'axis', 0.5, -0.3);
+                l.position.copy(toScene(cN - half - half * 0.03, e, 0));
+                V.world.add(l);
+            }
+            for (let n = cN - half + gStep; n <= cN + half; n += gStep) {
+                const l = makeLabel(n >= 0 ? `${fmt(n)}N` : `${fmt(-n)}S`, 'axis', 1.1, 0.5);
+                l.position.copy(toScene(n, cE - half - half * 0.03, 0));
+                V.world.add(l);
+            }
+
+            // Compass labels
+            [['N', cN + half * 1.1, cE], ['S', cN - half * 1.12, cE], ['E', cN, cE + half * 1.1], ['W', cN, cE - half * 1.12]]
+                .forEach(([txt, n, e]) => {
+                    const l = makeLabel(txt, 'compass');
+                    l.position.copy(toScene(n, e, 0));
+                    V.world.add(l);
+                });
+
+            // Rig / slot markers
+            const rig = new THREE.Mesh(
+                new THREE.ConeGeometry(half * 0.012, half * 0.05, 4),
+                new THREE.MeshStandardMaterial({ color: 0xe2e8f0 })
+            );
+            rig.position.copy(toScene(0, 0, RKB - half * 0.025));
+            V.world.add(rig);
+            const rigLbl = makeLabel('Rig (RKB +85 ft)', 'muted', 0.5, 1.6);
+            rigLbl.position.copy(toScene(0, 0, RKB - half * 0.05));
+            V.world.add(rigLbl);
+
+            // Offset well
+            const offPts = game.offset.filter(p => p.tvd <= endD + 500).map(p => toScene(p.n, p.e, p.tvd));
+            V.world.add(makeLine(offPts, { color: COLORS.offset, width: 2, dashed: true, dashSize: 120, gapSize: 90 }));
+            const offLbl = makeLabel('Offset Well', 'muted', 0.5, 1.4);
+            offLbl.position.copy(offPts[offPts.length - 1]);
+            V.world.add(offLbl);
+
+            // Targets
+            tg.forEach((t, i) => {
+                const c = toScene(t.n, t.e, t.tvd);
+                const discMat = new THREE.MeshBasicMaterial({
+                    color: COLORS.pending, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false
+                });
+                const disc = new THREE.Mesh(new THREE.CircleGeometry(t.tol, 64).rotateX(-Math.PI / 2), discMat);
+                disc.position.copy(c);
+                V.world.add(disc);
+
+                const ring = makeLine(circlePoints(t.n, t.e, t.tvd, t.tol), { color: COLORS.pending, width: 2.5 });
+                V.world.add(ring);
+
+                const dot = makePoint(c, COLORS.pending, 6);
+                V.world.add(dot);
+
+                // Drop line to surface + plan-view ring at MSL
+                V.world.add(makeLine([toScene(t.n, t.e, 0), c], { color: COLORS.pending, width: 1, opacity: 0.35, dashed: true, dashSize: 150, gapSize: 150 }));
+                V.world.add(makeLine(circlePoints(t.n, t.e, 0, t.tol), { color: COLORS.pending, width: 1, opacity: 0.45 }));
+
+                const lbl = makeLabel(`T${i + 1} · ${fmt(t.tvd)} ft`, 'target', 0.5, 1.4);
+                lbl.position.copy(c);
+                V.world.add(lbl);
+
+                V.targetObjs.push({ discMat, ringMat: ring.material, dotMat: dot.material, lbl });
+            });
+        }
+
+        function markTarget(i, hit, pierce, dist) {
+            const o = V.targetObjs[i];
+            if (!o) return;
+            const col = hit ? COLORS.hit : COLORS.miss;
+            o.discMat.color.set(col);
+            o.ringMat.color.set(col);
+            o.dotMat.color.set(col);
+            o.lbl.element.classList.add(hit ? 'hit' : 'miss');
+            o.lbl.element.textContent = `T${i + 1} · ${hit ? 'HIT' : 'MISS'}`;
+
+            const p = toScene(pierce.n, pierce.e, pierce.tvd);
+            V.world.add(makePoint(p, 0xffffff, 8));
+            const pl = makeLabel(`Pierce · ${dist.toFixed(0)} ft off`, hit ? 'hit' : 'miss', 0.5, -0.4);
+            pl.position.copy(p);
+            V.world.add(pl);
+        }
+
+        // ---------- Dynamic scene (well path, bit, AC line) ----------
+        function updateWellScene(ac) {
+            const pts = game.path.map(p => toScene(p.n, p.e, p.tvd));
+            replaceInWorld('activeLine', makeLine(pts, { color: COLORS.well, width: 4 }));
+            replaceInWorld('shadowLine', makeLine(game.path.map(p => toScene(p.n, p.e, 0)), { color: COLORS.well, width: 1.5, opacity: 0.45 }));
+
+            const bitPos = pts[pts.length - 1];
+            V.bit.position.copy(bitPos);
+            const I = game.inc * D2R, A = game.azi * D2R;
+            V.arrow.setDirection(toScene(Math.sin(I) * Math.cos(A), Math.sin(I) * Math.sin(A), Math.cos(I)).normalize());
+
+            // Anti-collision line to the closest offset station
+            if (ac.pt && ac.dist < 300) {
+                const op = toScene(ac.pt.n, ac.pt.e, ac.pt.tvd);
+                replaceInWorld('acLine', makeLine([bitPos, op], { color: COLORS.ac, width: 2, dashed: true, dashSize: 10, gapSize: 8 }));
+                const lbl = makeLabel(`AC ${ac.dist.toFixed(0)} ft`, 'ac', 0.5, 1.3);
+                lbl.position.lerpVectors(bitPos, op, 0.5);
+                replaceInWorld('acLabel', lbl);
+            } else {
+                replaceInWorld('acLine', null);
+                replaceInWorld('acLabel', null);
+            }
+
+            if (V.follow) followBit();
+        }
+
+        // ---------- Camera views ----------
+        function flyTo(pos, target, instant = false) {
+            if (instant) {
+                V.anim = null;
+                V.camera.position.copy(pos);
+                V.controls.target.copy(target);
+                V.controls.update();
+                return;
+            }
+            V.anim = {
+                p0: V.camera.position.clone(), p1: pos,
+                t0: V.controls.target.clone(), t1: target,
+                start: performance.now(), dur: 800
+            };
+        }
+
+        function setView(mode, instant = false) {
+            const b = V.bounds;
+            if (!b) return;
+            const center = toScene(b.cN, b.cE, b.endD / 2);
+            const R = Math.max(b.half * 2, b.endD) * 1.35;
+            let dir;
+            switch (mode) {
+                case 'plan': dir = new THREE.Vector3(0, 1, 0.0001); break;        // looking down, North up
+                case 'ns': dir = new THREE.Vector3(1, 0, 0); break;               // from East, North to the right
+                case 'ew': dir = new THREE.Vector3(0, 0, 1); break;               // from South, East to the right
+                case 'vs': {                                                       // perpendicular to target azimuth
+                    const t = game.targets[game.targets.length - 1];
+                    const az = Math.atan2(t.e, t.n);
+                    dir = new THREE.Vector3(Math.cos(az), 0, Math.sin(az));
+                    break;
+                }
+                default: dir = new THREE.Vector3(1.0, 0.6, 1.2);                  // 3D oblique from the SE
+            }
+            flyTo(center.clone().add(dir.normalize().multiplyScalar(R)), center, instant);
+            document.querySelectorAll('.view-btn[data-view]').forEach(el => el.classList.toggle('active', el.dataset.view === mode));
+        }
+
+        function followBit() {
+            const offset = V.camera.position.clone().sub(V.controls.target);
+            const target = V.bit.position.clone();
+            flyTo(target.clone().add(offset), target);
+        }
+
+        document.querySelectorAll('.view-btn[data-view]').forEach(btn =>
+            btn.addEventListener('click', () => setView(btn.dataset.view)));
+
+        function orbitCamera(dTheta, dPhi) {
+            if (!V.camera || !V.controls) return;
+            V.anim = null;
+            const offset = V.camera.position.clone().sub(V.controls.target);
+            const sph = new THREE.Spherical().setFromVector3(offset);
+            sph.theta += dTheta;
+            sph.phi = clamp(sph.phi + dPhi, 0.05, Math.PI - 0.05);
+            offset.setFromSpherical(sph);
+            V.camera.position.copy(V.controls.target).add(offset);
+            V.controls.update();
+            document.querySelectorAll('.view-btn[data-view]').forEach(el => el.classList.remove('active'));
+        }
+
+        document.querySelectorAll('.view-btn[data-orbit]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const dir = btn.dataset.orbit;
+                const stepRad = 15 * D2R;
+                if (dir === 'left') orbitCamera(-stepRad, 0);
+                else if (dir === 'right') orbitCamera(stepRad, 0);
+                else if (dir === 'up') orbitCamera(0, -stepRad);
+                else if (dir === 'down') orbitCamera(0, stepRad);
+            });
+        });
+
+        $('btn-follow').addEventListener('click', (e) => {
+            V.follow = !V.follow;
+            e.currentTarget.classList.toggle('active', V.follow);
+            if (V.follow && V.renderer) followBit();
+        });
+
+        $('btn-autorotate').addEventListener('click', (e) => {
+            if (!V.controls) return;
+            V.controls.autoRotate = !V.controls.autoRotate;
+            e.currentTarget.classList.toggle('active', V.controls.autoRotate);
+        });
+    </script>
+</body>
+
+</html>
